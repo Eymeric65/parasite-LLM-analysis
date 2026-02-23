@@ -41,6 +41,8 @@ interface LiveCluster {
   isExpanded: boolean
   animFrame: number | null
   collapseTimer: ReturnType<typeof setTimeout> | null
+  /** Invisible circle covering the full spread area — sole hover target. */
+  umbrellaMarker: L.CircleMarker | null
 }
 
 /** All clusters currently on the map. */
@@ -70,12 +72,14 @@ function parasiteOptions(finding: Finding): L.CircleMarkerOptions {
 
 function hostOptions(finding: Finding): L.CircleMarkerOptions {
   const hl = isHighlighted(finding)
+  // Radius is only 2px more than the parasite so it reads as a coloured border,
+  // not a separate large ring.  Parasite highlighted = 8px → host = 10px.
   return {
-    radius: hl ? 13 : 9,
+    radius: hl ? 10 : 7,
     fillColor: 'transparent',
     fillOpacity: 0,
     color: speciesColorSolid(finding.host_species),
-    weight: hl ? 2.5 : 1.5,
+    weight: hl ? 2 : 1.5,
     opacity: hl ? 0.9 : 0.15,
   }
 }
@@ -191,28 +195,48 @@ function cancelAllClusters(): void {
   for (const c of liveClusters) {
     if (c.animFrame !== null) cancelAnimationFrame(c.animFrame)
     if (c.collapseTimer !== null) clearTimeout(c.collapseTimer)
+    if (c.umbrellaMarker && markerLayer) markerLayer.removeLayer(c.umbrellaMarker)
   }
   liveClusters = []
 }
 
-function bindHover(marker: L.CircleMarker, cluster: LiveCluster): void {
-  // Single-member clusters don't need spiderfy
-  if (cluster.members.length <= 1) return
+/**
+ * Shared hover helpers — both the umbrella and each member marker use the
+ * same collapseTimer on the cluster so cursor movement between them never
+ * accidentally triggers a collapse.
+ */
+function onEnterCluster(cluster: LiveCluster): void {
+  if (cluster.collapseTimer !== null) {
+    clearTimeout(cluster.collapseTimer)
+    cluster.collapseTimer = null
+  }
+  expandCluster(cluster)
+}
 
-  marker.on('mouseover', () => {
-    if (cluster.collapseTimer !== null) {
-      clearTimeout(cluster.collapseTimer)
-      cluster.collapseTimer = null
-    }
-    expandCluster(cluster)
-  })
+function onLeaveCluster(cluster: LiveCluster): void {
+  if (cluster.collapseTimer !== null) return // already counting down
+  cluster.collapseTimer = setTimeout(() => {
+    cluster.collapseTimer = null
+    collapseCluster(cluster)
+  }, 80)
+}
 
-  marker.on('mouseout', () => {
-    cluster.collapseTimer = setTimeout(() => {
-      cluster.collapseTimer = null
-      collapseCluster(cluster)
-    }, 120)
-  })
+/** Bind expand/collapse hover to any marker belonging to this cluster. */
+function bindMarkerHover(marker: L.CircleMarker, cluster: LiveCluster): void {
+  marker.on('mouseover', () => onEnterCluster(cluster))
+  marker.on('mouseout',  () => onLeaveCluster(cluster))
+}
+
+/** Create the invisible hover-zone circle and wire expand/collapse to it. */
+function addUmbrella(cluster: LiveCluster): void {
+  if (!markerLayer || cluster.members.length <= 1) return
+  const umbrella = L.circleMarker(
+    [cluster.def.centerLat, cluster.def.centerLng],
+    { radius: cluster.def.umbrellaRadiusPx, fillOpacity: 0, opacity: 0, interactive: true },
+  ).addTo(markerLayer)
+
+  bindMarkerHover(umbrella, cluster)
+  cluster.umbrellaMarker = umbrella
 }
 
 function rebuildMarkers(): void {
@@ -241,12 +265,18 @@ function rebuildMarkers(): void {
 
     const live: LiveCluster = {
       def,
-      members:      liveMembers,
-      spiderLines:  [],
-      isExpanded:   false,
-      animFrame:    null,
-      collapseTimer: null,
+      members:        liveMembers,
+      spiderLines:    [],
+      isExpanded:     false,
+      animFrame:      null,
+      collapseTimer:  null,
+      umbrellaMarker: null,
     }
+
+    // Umbrella is added FIRST so it sits below the markers in SVG z-order.
+    // Markers rendered after it are on top → their tooltips are reachable.
+    // The umbrella still catches hover in the gaps between spread markers.
+    addUmbrella(live)
 
     for (const m of liveMembers) {
       const tt = tooltipHtml(m.finding)
@@ -256,7 +286,7 @@ function rebuildMarkers(): void {
           .bindTooltip(tt, { className: 'custom-tooltip', direction: 'top' })
           .addTo(markerLayer)
         m.parasiteMarker = pm
-        bindHover(pm, live)
+        if (live.members.length > 1) bindMarkerHover(pm, live)
       }
 
       if (mode === 'hosts' || mode === 'both') {
@@ -264,7 +294,7 @@ function rebuildMarkers(): void {
           .bindTooltip(tt, { className: 'custom-tooltip', direction: 'top' })
           .addTo(markerLayer)
         m.hostMarker = hm
-        bindHover(hm, live)
+        if (live.members.length > 1) bindMarkerHover(hm, live)
       }
     }
 

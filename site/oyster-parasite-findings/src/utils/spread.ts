@@ -10,16 +10,20 @@ const CLUSTER_PRECISION = 3
  * Base ring radius in pixels at the reference zoom.
  * Scales linearly with zoom so it shrinks at world-level and grows when close.
  */
-const BASE_RING_PX   = 18
+// Ring radius is sized so that neighbouring host-ring borders don't overlap.
+// Host highlighted radius = 10px → adjacent markers need ≥ 20px chord.
+// For RING_CAPACITY 6 the chord equals the ring radius, so BASE ≥ 24px.
+// A bit of headroom is added to keep the jitter from causing overlap.
+const BASE_RING_PX   = 20
 const REFERENCE_ZOOM = 8
-const MIN_RING_PX    = 8
-const MAX_RING_PX    = 28
+const MIN_RING_PX    = 12
+const MAX_RING_PX    = 32
 
 /** Max markers per ring before opening a new one. */
 const RING_CAPACITY = 6
 
-/** Organic jitter as a fraction of the ring radius. */
-const JITTER_FRACTION = 0.35
+/** Organic jitter (kept small so the chord guarantee above stays valid). */
+const JITTER_FRACTION = 0.15
 
 // ─── Public Types ─────────────────────────────────────────────────────────────
 
@@ -35,6 +39,13 @@ export interface ClusterDef {
   centerLng: number
   /** Always ≥ 1.  Single-member clusters need no spiderfy. */
   members: ClusterMember[]
+  /**
+   * Pixel radius of an invisible umbrella circle (centred at the centroid)
+   * that covers all spread members.  Used as the hover detection zone so
+   * animated markers don't fire spurious mouseout events as they move.
+   * 0 for single-member clusters.
+   */
+  umbrellaRadiusPx: number
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -146,7 +157,21 @@ export function buildClusters(findings: Finding[], map: L.Map): ClusterDef[] {
       return { finding, spreadLat: lat, spreadLng: lng }
     })
 
-    clusters.push({ key, centerLat, centerLng, members: clusterMembers })
+    // Umbrella radius = max pixel distance from centroid to any spread position
+    // plus the host marker radius (10px) as margin.
+    let umbrellaRadiusPx = 0
+    if (members.length > 1) {
+      for (const cm of clusterMembers) {
+        const spreadPx = map.latLngToContainerPoint(L.latLng(cm.spreadLat, cm.spreadLng))
+        const dist = Math.sqrt(
+          (spreadPx.x - centerPx.x) ** 2 + (spreadPx.y - centerPx.y) ** 2,
+        )
+        if (dist > umbrellaRadiusPx) umbrellaRadiusPx = dist
+      }
+      umbrellaRadiusPx += 12 // host marker radius + small margin
+    }
+
+    clusters.push({ key, centerLat, centerLng, members: clusterMembers, umbrellaRadiusPx })
   }
 
   return clusters

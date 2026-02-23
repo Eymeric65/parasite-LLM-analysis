@@ -21,7 +21,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [main]
+    branches: [master]
     paths:
       - 'site/oyster-parasite-findings/**'
       - '.github/workflows/deploy.yml'

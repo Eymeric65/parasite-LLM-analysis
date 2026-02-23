@@ -1,3 +1,17 @@
+"""zai_batch_treatment.py
+
+Step 1 of the pipeline: OCR PDF files into Markdown.
+
+For each PDF in ``input/`` the script base64-encodes the file and sends it to
+the ZAI GLM-OCR layout-parsing API.  The resulting Markdown text is written to
+a matching ``.md`` file inside ``output/``.  Token usage is appended to
+``output/token_usage.csv`` so the script is resumable; files already listed in
+that CSV are skipped.  PDFs exceeding 50 MB or 100 pages are also skipped and
+logged in ``output/skipped_pdf.txt``.
+
+Requires:
+    ZAI_KEY environment variable (loaded from .env via python-dotenv).
+"""
 from zai import ZaiClient
 from dotenv import load_dotenv
 import os

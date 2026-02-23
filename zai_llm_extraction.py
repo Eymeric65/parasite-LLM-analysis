@@ -1,3 +1,18 @@
+"""zai_llm_extraction.py
+
+Step 2 of the pipeline: structured extraction of parasite findings from Markdown.
+
+For each ``.md`` file produced by ``zai_batch_treatment.py`` the script calls
+the GLM-5 chat-completion API with a detailed marine-biology prompt.  The model
+returns a ``<scratchpad>`` reasoning block followed by a JSON object containing
+the reference paper and a list of findings (parasite species, host species,
+country, area, confidence score).  The full response is saved as a ``.json``
+file next to the ``.md``.  Token usage is tracked in
+``output/llm_token_usage.csv`` so the script can be resumed.
+
+Requires:
+    ZAI_KEY environment variable (loaded from .env via python-dotenv).
+"""
 from zai import ZaiClient
 from dotenv import load_dotenv
 import os

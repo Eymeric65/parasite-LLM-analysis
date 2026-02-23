@@ -1,3 +1,23 @@
+"""post_process_findings.py
+
+Step 4 of the pipeline: normalise and geocode findings.
+
+Reads ``database/findings.jsonl`` and for every finding:
+
+1. Splits multi-host ``host_species`` fields (comma/slash-separated).
+2. Calls the GLM-4 API to parse composite ``area`` strings into individual
+   geographic locations.
+3. Geocodes each (area, country) pair via the Nominatim OpenStreetMap API
+   (1 request/second rate limit respected).
+4. Writes the expanded, geocoded records to
+   ``database/post_process_findings.jsonl``.
+
+Each finding is hashed (MD5) and cached under ``log/processed_findings/`` so
+the script can be interrupted and safely resumed without re-querying APIs.
+
+Requires:
+    ZAI_KEY environment variable (loaded from .env via python-dotenv).
+"""
 import json
 import re
 import requests

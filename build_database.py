@@ -1,3 +1,15 @@
+"""build_database.py
+
+Step 3 of the pipeline: aggregate per-paper JSON files into a JSONL database.
+
+Reads every ``.json`` file produced by ``zai_llm_extraction.py`` from
+``output/`` and writes two JSONL files:
+
+- ``database/documents.jsonl`` – one record per paper with id, source file,
+  reference paper string and the scraped scratchpad text.
+- ``database/findings.jsonl``  – one record per finding (parasite/host/country/
+  area/confidence_score) linked to the parent document by ``document_id``.
+"""
 import os
 import json
 import re

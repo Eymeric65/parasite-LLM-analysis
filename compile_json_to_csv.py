@@ -1,3 +1,14 @@
+"""compile_json_to_csv.py
+
+Utility: export all findings to a flat CSV for spreadsheet analysis.
+
+Iterates every ``.json`` file in ``output/``, extracts the scratchpad and the
+findings list, and writes one row per finding to
+``output/compiled_findings.csv``.  Columns: source_file, reference_paper,
+parasite_species, host_species, country, area, confidence_score, scratchpad.
+
+This script is optional and independent of the main database pipeline.
+"""
 import os
 import json
 import csv
