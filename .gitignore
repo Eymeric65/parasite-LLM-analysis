@@ -1,0 +1,10 @@
+input/
+.venv/
+.env
+output*/
+*.rar
+# Database files downloaded into the site public dir during CI builds
+site/oyster-parasite-findings/public/database/*.jsonl
+site/oyster-parasite-findings/public/database/*.json
+database/
+log/

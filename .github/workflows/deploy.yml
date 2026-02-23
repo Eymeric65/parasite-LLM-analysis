@@ -1,0 +1,136 @@
+# ─── Deploy to GitHub Pages ────────────────────────────────────────────────────
+#
+# Builds the Vite/Vue visualiser and deploys it to GitHub Pages.
+#
+# Database twist: the JSONL files are NOT committed to this repo.
+# Instead, they are downloaded at build-time from the latest GitHub Release
+# (published by the release-database.yml workflow).
+#
+# Triggers:
+#   - Push to main that changes the site source files
+#   - A new GitHub Release is published (new database snapshot)
+#   - Manually via workflow_dispatch
+#
+# Required repository setup:
+#   Settings → Pages → Source: "GitHub Actions"
+#
+# The site will be served at:
+#   https://<your-username>.github.io/<repo-name>/
+
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/oyster-parasite-findings/**'
+      - '.github/workflows/deploy.yml'
+
+  release:
+    types: [published]   # re-deploy whenever a new database release is cut
+
+  workflow_dispatch:     # manual trigger
+
+# Only one deploy can run at a time; cancel any in-progress run.
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  # ────────────────────────────────────────────────────────────────
+  # 1. BUILD
+  # ────────────────────────────────────────────────────────────────
+  build:
+    name: Build site
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read   # to checkout and call the GH API
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── Prepare the public/database directory ──────────────────
+      # The local dev setup uses a symlink; in CI we replace it with
+      # a real directory populated with the latest release assets.
+
+      - name: Prepare database directory
+        run: |
+          TARGET=site/oyster-parasite-findings/public/database
+
+          # Remove symlink or stale directory from working tree
+          if [ -L "$TARGET" ] || [ -d "$TARGET" ]; then
+            rm -rf "$TARGET"
+          fi
+
+          mkdir -p "$TARGET"
+          echo "📁 Created $TARGET"
+
+      - name: Download latest database release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TARGET=site/oyster-parasite-findings/public/database
+
+          echo "⬇  Fetching latest database release from ${{ github.repository }} …"
+
+          gh release download \
+            --repo "${{ github.repository }}" \
+            --pattern "*.jsonl" \
+            --dir "$TARGET" \
+            --clobber
+
+          echo "📦 Downloaded assets:"
+          ls -lh "$TARGET"
+
+      # ── Node / npm setup ───────────────────────────────────────
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: site/oyster-parasite-findings/package-lock.json
+
+      - name: Install dependencies
+        working-directory: site/oyster-parasite-findings
+        run: npm ci
+
+      # ── Build ──────────────────────────────────────────────────
+      # VITE_BASE_URL sets the sub-path for GitHub Pages project sites.
+      # For a user/org page (e.g. username.github.io) set it to '/'.
+
+      - name: Build
+        working-directory: site/oyster-parasite-findings
+        env:
+          VITE_BASE_URL: /${{ github.event.repository.name }}/
+        run: npm run build
+
+      # ── Upload artifact ────────────────────────────────────────
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/oyster-parasite-findings/dist
+
+  # ────────────────────────────────────────────────────────────────
+  # 2. DEPLOY
+  # ────────────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+
+    permissions:
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

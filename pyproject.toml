@@ -1,0 +1,15 @@
+[project]
+name = "parasite-llm-analysis"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "dotenv>=0.9.9",
+    "glmocr",
+    "pypdf2>=3.0.1",
+    "zai-sdk>=0.2.2",
+]
+
+[tool.uv.sources]
+glmocr = { git = "https://github.com/zai-org/glm-ocr.git" }
